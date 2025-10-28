@@ -1,0 +1,73 @@
+{
+  "$schema": "https://example.com/schema/terminal.json",
+  "appearance": {
+    "theme": "Everglass Dark",
+    "glass": {
+      "enabled": true,
+      "opacity": 0.8,
+      "blur_radius": 24,
+      "tint": "#0b0f19"
+    },
+    "font": {
+      "family": "Cascadia Code",
+      "size": 13.5,
+      "ligatures": true
+    },
+    "cursor": {
+      "shape": "bar",
+      "blink": true
+    }
+  },
+  "behavior": {
+    "scrollback": 120000,
+    "copy_on_select": false,
+    "bell": "visual"
+  },
+  "profiles": [
+    {
+      "name": "PowerShell",
+      "shell": "pwsh.exe",
+      "args": [],
+      "env": [
+        ["TERM", "xterm-256color"]
+      ]
+    },
+    {
+      "name": "CMD",
+      "shell": "C:\\Windows\\System32\\cmd.exe",
+      "args": ["/k", "chcp", "65001"],
+      "env": [
+        ["TERM", "xterm-256color"]
+      ]
+    },
+    {
+      "name": "WSL Ubuntu",
+      "shell": "wsl.exe",
+      "args": ["-d", "Ubuntu"],
+      "env": [
+        ["TERM", "xterm-256color"]
+      ]
+    },
+    {
+      "name": "Bash",
+      "shell": "/bin/bash",
+      "args": [],
+      "env": [
+        ["TERM", "xterm-256color"]
+      ]
+    }
+  ],
+  "media": {
+    "enable_kitty": true,
+    "enable_iterm": true,
+    "enable_sixel": false,
+    "default_placement": "inline",
+    "video": {
+      "audio": true,
+      "hw_decode": "auto"
+    }
+  },
+  "layout": {
+    "startup": null
+  }
+}

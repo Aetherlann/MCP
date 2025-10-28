@@ -1,0 +1,27 @@
+[package]
+name = "hyper-terminal"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "hyper"
+path = "src/main.rs"
+
+[dependencies]
+# Workspace crates
+ht-pty = { path = "../ht-pty" }
+ht-vt = { path = "../ht-vt" }
+ht-renderer = { path = "../ht-renderer" }
+ht-media = { path = "../ht-media" }
+ht-config = { path = "../ht-config" }
+ht-ui = { path = "../ht-ui" }
+
+# Workspace dependencies
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

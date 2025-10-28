@@ -1,0 +1,21 @@
+[package]
+name = "ht-config"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Configuration management and profiles"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+directories = { workspace = true }
+tracing = { workspace = true }
+
+# File watching for live reload
+notify = "6.1"
+
+# JSON schema validation
+schemars = "0.8"

@@ -1,0 +1,80 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/hyper-terminal",
+    "crates/ht-pty",
+    "crates/ht-vt",
+    "crates/ht-renderer",
+    "crates/ht-media",
+    "crates/ht-config",
+    "crates/ht-ui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Hyper Terminal Team"]
+license = "MIT"
+repository = "https://github.com/Aetherlann/MCP"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.40", features = ["full"] }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Graphics
+wgpu = "22.0"
+bytemuck = { version = "1.18", features = ["derive"] }
+
+# Windowing (platform-specific)
+winit = "0.30"
+
+# Text rendering
+rustybuzz = "0.18"
+unicode-width = "0.1"
+unicode-segmentation = "1.12"
+
+# Image/Media
+image = "0.25"
+webp = "0.3"
+
+# Configuration
+directories = "5.0"
+
+# Platform-specific
+[target.'cfg(windows)'.workspace.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+    "Win32_System_Threading",
+    "Win32_Security",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Pipes",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_Dwm",
+] }
+
+[target.'cfg(unix)'.workspace.dependencies]
+libc = "0.2"
+nix = { version = "0.29", features = ["pty", "process"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 1
