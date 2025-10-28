@@ -176,7 +176,7 @@ impl Terminal {
     }
 
     pub fn render(&mut self) -> Result<()> {
-        self.renderer.render(&self.grid)?;
+        self.renderer.render(&self.grid, &self.media)?;
         Ok(())
     }
 
@@ -197,8 +197,28 @@ impl Terminal {
             VtToken::ClearScreen => self.grid.clear_screen(),
             VtToken::ClearLine => self.grid.clear_line(),
             VtToken::Graphics(cmd) => {
-                if let Err(e) = self.media.handle_graphics(cmd) {
-                    tracing::error!("Failed to handle graphics: {}", e);
+                // Get cursor position for anchoring media
+                let (col, row) = self.grid.cursor_pos();
+
+                match self.media.handle_graphics(cmd, row, col) {
+                    Ok(Some(id)) => {
+                        // Upload texture to GPU
+                        if let Some(surface) = self.media.get_surface(id) {
+                            self.renderer.upload_media_texture(
+                                id,
+                                &surface.rgba_data,
+                                surface.width,
+                                surface.height,
+                            );
+                            tracing::info!("Uploaded media texture {} to GPU", id);
+                        }
+                    }
+                    Ok(None) => {
+                        tracing::debug!("Graphics command handled but no surface created");
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to handle graphics: {}", e);
+                    }
                 }
             }
             VtToken::Hyperlink { url, id } => {
