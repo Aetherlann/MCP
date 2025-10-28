@@ -61,8 +61,30 @@ async fn main() -> Result<()> {
                 }
                 WindowEvent::KeyboardInput { event, .. } => {
                     if event.state.is_pressed() {
+                        // Handle special keys first
                         if let PhysicalKey::Code(code) = event.physical_key {
-                            terminal.handle_key(code);
+                            // Check if this is a special key
+                            let is_special = matches!(code,
+                                KeyCode::Enter | KeyCode::Backspace | KeyCode::Tab |
+                                KeyCode::Escape | KeyCode::ArrowUp | KeyCode::ArrowDown |
+                                KeyCode::ArrowLeft | KeyCode::ArrowRight | KeyCode::Home |
+                                KeyCode::End | KeyCode::PageUp | KeyCode::PageDown |
+                                KeyCode::Delete
+                            );
+
+                            if is_special {
+                                terminal.handle_key(code);
+                            } else if let Some(ref text) = event.text {
+                                // Handle text input
+                                for ch in text.chars() {
+                                    terminal.handle_char(ch);
+                                }
+                            }
+                        } else if let Some(ref text) = event.text {
+                            // Handle text input for non-physical keys
+                            for ch in text.chars() {
+                                terminal.handle_char(ch);
+                            }
                         }
                     }
                 }

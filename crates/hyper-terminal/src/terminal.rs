@@ -5,11 +5,13 @@ use ht_vt::{VtParser, VtToken, Grid};
 use ht_renderer::Renderer;
 use ht_media::MediaManager;
 use winit::keyboard::KeyCode;
+use tokio::sync::mpsc;
 
 pub struct Terminal {
     window: winit::window::Window,
     config: Config,
-    pty: Box<dyn Pty>,
+    pty_tx: mpsc::UnboundedSender<Vec<u8>>,
+    pty_rx: mpsc::UnboundedReceiver<PtyEvent>,
     parser: VtParser,
     grid: Grid,
     renderer: Renderer,
@@ -29,9 +31,13 @@ impl Terminal {
         let profile = config.profiles.first()
             .ok_or_else(|| anyhow::anyhow!("No profiles configured"))?;
 
+        // Create renderer first to get cell size
+        let renderer = Renderer::new(&window).await?;
+        let (cell_width, cell_height) = renderer.cell_size();
+
         let size = window.inner_size();
-        let cols = (size.width / 10).max(80) as u16;  // Rough estimate
-        let rows = (size.height / 20).max(24) as u16;
+        let cols = ((size.width as f32 / cell_width).floor() as u16).max(80);
+        let rows = ((size.height as f32 / cell_height).floor() as u16).max(24);
 
         pty.spawn(
             &profile.shell,
@@ -50,13 +56,50 @@ impl Terminal {
             config.behavior.scrollback,
         );
 
-        // Create renderer
-        let renderer = Renderer::new(&window).await?;
+        // Create channels for PTY communication
+        let (input_tx, mut input_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        let (event_tx, event_rx) = mpsc::unbounded_channel::<PtyEvent>();
+
+        // Spawn PTY I/O task
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    // Handle input from terminal
+                    Some(data) = input_rx.recv() => {
+                        if let Err(e) = pty.write(&data).await {
+                            tracing::error!("PTY write error: {}", e);
+                            break;
+                        }
+                    }
+                    // Handle output from PTY
+                    event_result = pty.read_event() => {
+                        match event_result {
+                            Ok(event) => {
+                                let is_exit = matches!(event, PtyEvent::Exit(_));
+                                if event_tx.send(event).is_err() {
+                                    tracing::error!("Failed to send PTY event");
+                                    break;
+                                }
+                                if is_exit {
+                                    break;
+                                }
+                            }
+                            Err(e) => {
+                                tracing::error!("PTY read error: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            tracing::info!("PTY task exiting");
+        });
 
         Ok(Self {
             window,
             config,
-            pty,
+            pty_tx: input_tx,
+            pty_rx: event_rx,
             parser: VtParser::new(),
             grid,
             renderer,
@@ -68,20 +111,15 @@ impl Terminal {
         // Update renderer
         self.renderer.resize(width, height);
 
-        // Calculate new grid size
-        let cols = (width / 10).max(80) as u16;
-        let rows = (height / 20).max(24) as u16;
+        // Calculate new grid size based on cell dimensions
+        let (cell_width, cell_height) = self.renderer.cell_size();
+        let cols = ((width as f32 / cell_width).floor() as u16).max(80);
+        let rows = ((height as f32 / cell_height).floor() as u16).max(24);
 
         // Resize grid
         self.grid.resize(rows as usize, cols as usize);
 
-        // Resize PTY
-        let size = PtySize::new(rows, cols);
-        if let Err(e) = tokio::runtime::Handle::current().block_on(self.pty.resize(size)) {
-            tracing::error!("Failed to resize PTY: {}", e);
-        }
-
-        tracing::debug!("Resized to {}x{}", cols, rows);
+        tracing::debug!("Resized to {}x{} ({}x{} px)", cols, rows, width, height);
     }
 
     pub fn handle_key(&mut self, key: KeyCode) {
@@ -102,15 +140,39 @@ impl Terminal {
             _ => return,
         };
 
-        if let Err(e) = tokio::runtime::Handle::current().block_on(self.pty.write(&data)) {
-            tracing::error!("Failed to write to PTY: {}", e);
+        if let Err(e) = self.pty_tx.send(data) {
+            tracing::error!("Failed to send to PTY: {}", e);
+        }
+    }
+
+    pub fn handle_char(&mut self, ch: char) {
+        let mut buf = [0u8; 4];
+        let bytes = ch.encode_utf8(&mut buf).as_bytes().to_vec();
+
+        if let Err(e) = self.pty_tx.send(bytes) {
+            tracing::error!("Failed to send char to PTY: {}", e);
         }
     }
 
     pub fn process_pty(&mut self) {
-        // Non-blocking read from PTY
-        // In a real implementation, this would use async channels
-        // For now, we'll skip the actual reading to keep it simple
+        // Process all available PTY events
+        while let Ok(event) = self.pty_rx.try_recv() {
+            match event {
+                PtyEvent::Data(data) => {
+                    // Parse VT sequences
+                    let tokens = self.parser.parse(&data);
+
+                    // Apply tokens to grid
+                    for token in tokens {
+                        self.apply_token(token);
+                    }
+                }
+                PtyEvent::Exit(code) => {
+                    tracing::info!("Shell exited with code: {:?}", code);
+                    // Could set a flag to close the terminal
+                }
+            }
+        }
     }
 
     pub fn render(&mut self) -> Result<()> {

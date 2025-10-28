@@ -73,6 +73,10 @@ impl Renderer {
         self.surface.configure(&self.device, &self.surface_config);
     }
 
+    pub fn cell_size(&self) -> (f32, f32) {
+        self.text_renderer.cell_size()
+    }
+
     pub fn render(&mut self, grid: &ht_vt::Grid) -> Result<()> {
         let output = self.surface.get_current_texture()?;
         let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -102,7 +106,13 @@ impl Renderer {
                 occlusion_query_set: None,
             });
 
-            self.text_renderer.render(&mut render_pass, grid)?;
+            self.text_renderer.render(
+                &mut render_pass,
+                grid,
+                &self.queue,
+                self.surface_config.width as f32,
+                self.surface_config.height as f32,
+            )?;
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
