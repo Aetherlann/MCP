@@ -4,9 +4,10 @@ use ht_pty::{Pty, PtySize, PtyEvent};
 use ht_vt::{VtParser, VtToken, Grid, GalleryControl};
 use ht_renderer::Renderer;
 use ht_media::MediaManager;
-use ht_gallery::GalleryManager;
+use ht_gallery::{GalleryManager, GalleryConfig, GalleryMode, MediaContent, CardMetadata, ImageData, ImageFormat};
 use winit::keyboard::KeyCode;
 use tokio::sync::mpsc;
+use std::time::SystemTime;
 
 pub struct Terminal {
     window: winit::window::Window,
@@ -18,6 +19,10 @@ pub struct Terminal {
     renderer: Renderer,
     media: MediaManager,
     gallery: GalleryManager,
+
+    // Gallery state
+    current_gallery: Option<String>,
+    pending_media_metadata: Option<CardMetadata>,
 }
 
 impl Terminal {
@@ -107,6 +112,8 @@ impl Terminal {
             renderer,
             media: MediaManager::new(),
             gallery: GalleryManager::new(),
+            current_gallery: None,
+            pending_media_metadata: None,
         })
     }
 
@@ -214,6 +221,21 @@ impl Terminal {
                                 surface.height,
                             );
                             tracing::info!("Uploaded media texture {} to GPU", id);
+
+                            // If there's pending metadata and an active gallery, add to gallery
+                            if let (Some(ref gallery_id), Some(metadata)) = (&self.current_gallery, self.pending_media_metadata.take()) {
+                                let content = MediaContent::Image(ImageData {
+                                    rgba_data: surface.rgba_data.clone(),
+                                    width: surface.width,
+                                    height: surface.height,
+                                    format: ImageFormat::Png, // Assume PNG for now
+                                    size_bytes: surface.rgba_data.len(),
+                                });
+
+                                if let Err(e) = self.gallery.add_media_to_gallery(gallery_id, content, metadata) {
+                                    tracing::error!("Failed to add media to gallery: {}", e);
+                                }
+                            }
                         }
                     }
                     Ok(None) => {
@@ -223,6 +245,9 @@ impl Terminal {
                         tracing::error!("Failed to handle graphics: {}", e);
                     }
                 }
+            }
+            VtToken::GalleryCommand(cmd) => {
+                self.handle_gallery_command(cmd);
             }
             VtToken::Hyperlink { url, id } => {
                 tracing::debug!("Hyperlink: {} (id: {:?})", url, id);
@@ -234,6 +259,96 @@ impl Terminal {
                 tracing::debug!("Bell");
             }
             VtToken::Unknown => {}
+        }
+    }
+
+    fn handle_gallery_command(&mut self, cmd: GalleryControl) {
+        use ht_gallery::Rect;
+
+        match cmd {
+            GalleryControl::Start { id, mode, title, columns, spacing } => {
+                tracing::info!("Gallery start: {} (mode: {:?})", id, mode);
+
+                // Parse mode
+                let gallery_mode = mode.as_ref()
+                    .and_then(|m| match m.as_str() {
+                        "grid" => Some(GalleryMode::Grid),
+                        "masonry" => Some(GalleryMode::Masonry),
+                        "filmstrip" => Some(GalleryMode::Filmstrip),
+                        "comparison" => Some(GalleryMode::Comparison),
+                        "deck" => Some(GalleryMode::Deck),
+                        "file_explorer" => Some(GalleryMode::FileExplorer),
+                        "auto" | _ => Some(GalleryMode::Auto),
+                    })
+                    .unwrap_or(GalleryMode::Auto);
+
+                // Create gallery config
+                let config = GalleryConfig {
+                    mode: gallery_mode,
+                    title,
+                    columns,
+                    spacing: spacing.unwrap_or(12.0),
+                    padding: 16.0,
+                };
+
+                // Create gallery
+                if let Err(e) = self.gallery.create_gallery(id.clone(), config) {
+                    tracing::error!("Failed to create gallery: {}", e);
+                } else {
+                    self.current_gallery = Some(id);
+                }
+            }
+            GalleryControl::End { id } => {
+                tracing::info!("Gallery end: {}", id);
+
+                // Finalize gallery layout
+                let size = self.window.inner_size();
+                let container = Rect::new(0.0, 0.0, size.width as f32, size.height as f32);
+
+                if let Err(e) = self.gallery.finalize_gallery(&id, container) {
+                    tracing::error!("Failed to finalize gallery: {}", e);
+                }
+
+                // Clear current gallery if it matches
+                if self.current_gallery.as_ref() == Some(&id) {
+                    self.current_gallery = None;
+                }
+            }
+            GalleryControl::MediaItem { gallery_id, title, description, tags, author } => {
+                tracing::debug!("Gallery media item: {} -> {:?}", gallery_id, title);
+
+                // Store metadata for next Graphics token
+                let mut metadata = CardMetadata::default();
+                metadata.title = title;
+                metadata.description = description;
+                metadata.tags = tags;
+                metadata.author = author;
+                metadata.timestamp = Some(SystemTime::now());
+                metadata.source = "claude".to_string(); // Could be detected from context
+
+                self.pending_media_metadata = Some(metadata);
+
+                // Ensure we're tracking this gallery
+                if self.current_gallery.is_none() {
+                    self.current_gallery = Some(gallery_id);
+                }
+            }
+            GalleryControl::FileItem { gallery_id, path, title, description, language } => {
+                tracing::debug!("Gallery file item: {} -> {}", gallery_id, path);
+
+                // For file items, we'd need to read the file content
+                // For now, just log it
+                tracing::info!("File item not yet fully implemented: {}", path);
+            }
+            GalleryControl::CloseAll => {
+                tracing::info!("Gallery close all");
+                // Would need to add a close_all method to GalleryManager
+                self.current_gallery = None;
+            }
+            GalleryControl::Status => {
+                tracing::info!("Gallery status requested");
+                // Could log current gallery state
+            }
         }
     }
 }
