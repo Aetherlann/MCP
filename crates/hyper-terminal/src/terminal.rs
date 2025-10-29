@@ -1,9 +1,10 @@
 use anyhow::Result;
 use ht_config::Config;
 use ht_pty::{Pty, PtySize, PtyEvent};
-use ht_vt::{VtParser, VtToken, Grid};
+use ht_vt::{VtParser, VtToken, Grid, GalleryControl};
 use ht_renderer::Renderer;
 use ht_media::MediaManager;
+use ht_gallery::GalleryManager;
 use winit::keyboard::KeyCode;
 use tokio::sync::mpsc;
 
@@ -16,6 +17,7 @@ pub struct Terminal {
     grid: Grid,
     renderer: Renderer,
     media: MediaManager,
+    gallery: GalleryManager,
 }
 
 impl Terminal {
@@ -104,6 +106,7 @@ impl Terminal {
             grid,
             renderer,
             media: MediaManager::new(),
+            gallery: GalleryManager::new(),
         })
     }
 

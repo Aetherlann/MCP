@@ -1,6 +1,44 @@
 use crate::color::Color;
 use crate::grid::CellAttributes;
 use crate::graphics::{GraphicsCommand, KittyGraphics, ItermImage};
+use std::collections::HashMap;
+
+/// Gallery control commands from OSC 1338
+#[derive(Debug, Clone, PartialEq)]
+pub enum GalleryControl {
+    /// Start a new gallery
+    Start {
+        id: String,
+        mode: Option<String>,
+        title: Option<String>,
+        columns: Option<u32>,
+        spacing: Option<f32>,
+    },
+    /// End a gallery
+    End {
+        id: String,
+    },
+    /// Add media item to gallery
+    MediaItem {
+        gallery_id: String,
+        title: Option<String>,
+        description: Option<String>,
+        tags: Vec<String>,
+        author: Option<String>,
+    },
+    /// Add file item to gallery
+    FileItem {
+        gallery_id: String,
+        path: String,
+        title: Option<String>,
+        description: Option<String>,
+        language: Option<String>,
+    },
+    /// Close all galleries
+    CloseAll,
+    /// Query gallery status
+    Status,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum VtToken {
@@ -32,6 +70,8 @@ pub enum VtToken {
     Hyperlink { url: String, id: Option<String> },
     /// OSC 52 clipboard
     Clipboard(String),
+    /// OSC 1338 gallery command
+    GalleryCommand(GalleryControl),
     /// Unknown/unsupported sequence
     Unknown,
 }
@@ -374,6 +414,10 @@ impl VtParser {
                     Some(VtToken::Unknown)
                 }
             }
+            "1338" => {
+                // Gallery commands: OSC 1338;key=value;key=value;... ST
+                self.parse_gallery_command(osc_data)
+            }
             _ => Some(VtToken::Unknown),
         }
     }
@@ -413,6 +457,90 @@ impl VtParser {
         }
 
         Some(VtToken::Unknown)
+    }
+
+    /// Parse gallery command from OSC 1338 data
+    /// Format: key=value;key=value;...
+    fn parse_gallery_command(&mut self, data: &str) -> Option<VtToken> {
+        let mut params: HashMap<String, String> = HashMap::new();
+
+        // Parse key=value pairs
+        for pair in data.split(';') {
+            if let Some((key, value)) = pair.split_once('=') {
+                params.insert(key.trim().to_string(), value.trim().to_string());
+            }
+        }
+
+        // Determine command type from params
+        if let Some(command_type) = params.get("gallery") {
+            match command_type.as_str() {
+                "start" => {
+                    let id = params.get("id")?.clone();
+                    let mode = params.get("mode").cloned();
+                    let title = params.get("title").cloned();
+                    let columns = params.get("columns").and_then(|s| s.parse().ok());
+                    let spacing = params.get("spacing").and_then(|s| s.parse().ok());
+
+                    Some(VtToken::GalleryCommand(GalleryControl::Start {
+                        id,
+                        mode,
+                        title,
+                        columns,
+                        spacing,
+                    }))
+                }
+                "end" => {
+                    let id = params.get("id")?.clone();
+                    Some(VtToken::GalleryCommand(GalleryControl::End { id }))
+                }
+                "close_all" => Some(VtToken::GalleryCommand(GalleryControl::CloseAll)),
+                "status" => Some(VtToken::GalleryCommand(GalleryControl::Status)),
+                _ => Some(VtToken::Unknown),
+            }
+        } else if let Some(media_type) = params.get("media") {
+            match media_type.as_str() {
+                "item" => {
+                    let gallery_id = params.get("gallery")?.clone();
+                    let title = params.get("title").cloned();
+                    let description = params.get("desc").cloned();
+                    let tags = params
+                        .get("tags")
+                        .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
+                        .unwrap_or_default();
+                    let author = params.get("author").cloned();
+
+                    Some(VtToken::GalleryCommand(GalleryControl::MediaItem {
+                        gallery_id,
+                        title,
+                        description,
+                        tags,
+                        author,
+                    }))
+                }
+                _ => Some(VtToken::Unknown),
+            }
+        } else if let Some(file_type) = params.get("file") {
+            match file_type.as_str() {
+                "item" => {
+                    let gallery_id = params.get("gallery")?.clone();
+                    let path = params.get("path")?.clone();
+                    let title = params.get("title").cloned();
+                    let description = params.get("desc").cloned();
+                    let language = params.get("lang").cloned();
+
+                    Some(VtToken::GalleryCommand(GalleryControl::FileItem {
+                        gallery_id,
+                        path,
+                        title,
+                        description,
+                        language,
+                    }))
+                }
+                _ => Some(VtToken::Unknown),
+            }
+        } else {
+            Some(VtToken::Unknown)
+        }
     }
 }
 
