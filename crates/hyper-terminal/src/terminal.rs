@@ -7,7 +7,7 @@ use ht_media::MediaManager;
 use ht_gallery::{GalleryManager, GalleryConfig, GalleryMode, MediaContent, CardMetadata, ImageData, ImageFormat};
 use winit::keyboard::KeyCode;
 use tokio::sync::mpsc;
-use std::time::SystemTime;
+use std::time::{SystemTime, Duration, Instant};
 
 pub struct Terminal {
     window: winit::window::Window,
@@ -186,7 +186,23 @@ impl Terminal {
     }
 
     pub fn render(&mut self) -> Result<()> {
+        // Render terminal content
         self.renderer.render(&self.grid, &self.media)?;
+
+        // Render gallery if active
+        if self.current_gallery.is_some() {
+            let size = self.window.inner_size();
+            let viewport = ht_gallery::Rect::new(0.0, 0.0, size.width as f32, size.height as f32);
+
+            // Get visible cards in viewport
+            let visible_cards = self.gallery.get_visible_cards(viewport);
+
+            tracing::debug!("Rendering {} visible gallery cards", visible_cards.len());
+
+            // Gallery rendering would be integrated with ht_renderer here
+            // For now, the gallery state is tracked and ready for GPU rendering
+        }
+
         Ok(())
     }
 
@@ -350,5 +366,86 @@ impl Terminal {
                 // Could log current gallery state
             }
         }
+    }
+
+    /// Handle cursor movement for gallery hover effects
+    pub fn handle_cursor_moved(&mut self, x: f32, y: f32) {
+        // Update gallery hover state
+        self.gallery.update_hover(Some((x, y)));
+        self.window.request_redraw();
+    }
+
+    /// Handle mouse click for gallery interactions
+    pub fn handle_mouse_click(&mut self, x: f32, y: f32) {
+        // Handle gallery card clicks and actions
+        if let Some(action) = self.gallery.handle_click((x, y)) {
+            match action {
+                ht_gallery::CardAction::Save => {
+                    tracing::info!("Gallery action: Save");
+                    // Could trigger save dialog
+                }
+                ht_gallery::CardAction::Copy => {
+                    tracing::info!("Gallery action: Copy");
+                    // Could copy to clipboard
+                }
+                ht_gallery::CardAction::Zoom => {
+                    tracing::info!("Gallery action: Zoom");
+                    // Could open zoomed view
+                }
+                ht_gallery::CardAction::Share => {
+                    tracing::info!("Gallery action: Share");
+                    // Could trigger share dialog
+                }
+                ht_gallery::CardAction::Delete => {
+                    tracing::info!("Gallery action: Delete");
+                    // Could remove from gallery
+                }
+                ht_gallery::CardAction::Custom(action) => {
+                    tracing::info!("Gallery action: Custom({})", action);
+                }
+            }
+        }
+        self.window.request_redraw();
+    }
+
+    /// Handle keyboard navigation for gallery
+    pub fn handle_gallery_navigation(&mut self, key: KeyCode) -> bool {
+        // Check if we have an active gallery
+        if self.current_gallery.is_none() {
+            return false;
+        }
+
+        let handled = match key {
+            KeyCode::ArrowLeft => {
+                self.gallery.navigate_previous();
+                true
+            }
+            KeyCode::ArrowRight => {
+                self.gallery.navigate_next();
+                true
+            }
+            KeyCode::Enter => {
+                // Could trigger action on selected card
+                tracing::info!("Gallery: Enter pressed");
+                true
+            }
+            KeyCode::Escape => {
+                // Could close gallery or deselect
+                tracing::info!("Gallery: Escape pressed");
+                true
+            }
+            _ => false,
+        };
+
+        if handled {
+            self.window.request_redraw();
+        }
+
+        handled
+    }
+
+    /// Update gallery animations
+    pub fn update_animations(&mut self, delta_time: Duration) {
+        self.gallery.update_animations(delta_time);
     }
 }
