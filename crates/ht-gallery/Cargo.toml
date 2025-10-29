@@ -1,25 +1,25 @@
 [package]
 name = "ht-gallery"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
-anyhow = "1.0"
-bytemuck = { version = "1.14", features = ["derive"] }
-wgpu = "0.19"
-winit = "0.29"
-image = "0.24"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-thiserror = "1.0"
+# Core workspace dependencies
+anyhow.workspace = true
+bytemuck.workspace = true
+wgpu.workspace = true
+winit.workspace = true
+image.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
 
-# For timing and animations
+# Gallery-specific dependencies
 instant = "0.1"
-
-# For UUID generation
 uuid = { version = "1.6", features = ["v4"] }
-
-# For texture packing
 rect_packer = "0.2"
 
 [dev-dependencies]
