@@ -1,0 +1,18 @@
+[package]
+name = "ht-widgets"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Core workspace dependencies
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+# Widget-specific
+uuid = { version = "1.6", features = ["v4"] }
+chrono = "0.4"

@@ -9,6 +9,8 @@ members = [
     "crates/ht-config",
     "crates/ht-ui",
     "crates/ht-gallery",
+    "crates/ht-layout",
+    "crates/ht-widgets",
 ]
 
 [workspace.package]

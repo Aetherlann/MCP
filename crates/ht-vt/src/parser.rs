@@ -40,6 +40,40 @@ pub enum GalleryControl {
     Status,
 }
 
+/// Next-gen interface commands from OSC 1339
+#[derive(Debug, Clone, PartialEq)]
+pub enum NextGenCommand {
+    /// Layout commands
+    RegionSplit { id: String, direction: String, ratio: f32 },
+    RegionContent { id: String, content_type: String, data: HashMap<String, String> },
+    RegionLayout { spec: String }, // JSON layout spec
+
+    /// Widget commands
+    WidgetCreate { widget_type: String, id: String, params: HashMap<String, String> },
+    WidgetUpdate { id: String, updates: HashMap<String, String> },
+    WidgetDestroy { id: String },
+
+    /// Streaming commands
+    StreamStart { stream_type: String, id: String, params: HashMap<String, String> },
+    StreamAdd { stream_id: String, data: HashMap<String, String> },
+    StreamUpdate { stream_id: String, item_id: String, updates: HashMap<String, String> },
+    StreamEnd { stream_id: String },
+
+    /// Callback commands
+    CallbackRegister { id: String, event: String, command: String },
+    CallbackUrl { widget_id: String, url: String, method: String },
+
+    /// State commands
+    StateSave { id: String },
+    StateLoad { id: String },
+    StateExport { file: String },
+
+    /// Query commands
+    QueryRegions,
+    QueryWidgets,
+    QueryState,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum VtToken {
     /// Printable character
@@ -72,6 +106,8 @@ pub enum VtToken {
     Clipboard(String),
     /// OSC 1338 gallery command
     GalleryCommand(GalleryControl),
+    /// OSC 1339 next-gen interface command
+    NextGen(NextGenCommand),
     /// Unknown/unsupported sequence
     Unknown,
 }
@@ -418,6 +454,10 @@ impl VtParser {
                 // Gallery commands: OSC 1338;key=value;key=value;... ST
                 self.parse_gallery_command(osc_data)
             }
+            "1339" => {
+                // Next-gen interface commands: OSC 1339;key=value;key=value;... ST
+                self.parse_nextgen_command(osc_data)
+            }
             _ => Some(VtToken::Unknown),
         }
     }
@@ -536,6 +576,127 @@ impl VtParser {
                         language,
                     }))
                 }
+                _ => Some(VtToken::Unknown),
+            }
+        } else {
+            Some(VtToken::Unknown)
+        }
+    }
+
+    /// Parse next-gen interface command from OSC 1339 data
+    /// Format: key=value;key=value;...
+    fn parse_nextgen_command(&mut self, data: &str) -> Option<VtToken> {
+        let mut params: HashMap<String, String> = HashMap::new();
+
+        // Parse key=value pairs
+        for pair in data.split(';') {
+            if let Some((key, value)) = pair.split_once('=') {
+                params.insert(key.trim().to_string(), value.trim().to_string());
+            }
+        }
+
+        // Determine command type from params
+        if let Some(region_cmd) = params.get("region") {
+            match region_cmd.as_str() {
+                "split" => {
+                    let id = params.get("id")?.clone();
+                    let direction = params.get("direction")?.clone();
+                    let ratio = params.get("ratio")?.parse().ok()?;
+                    Some(VtToken::NextGen(NextGenCommand::RegionSplit { id, direction, ratio }))
+                }
+                "content" => {
+                    let id = params.get("id")?.clone();
+                    let content_type = params.get("type")?.clone();
+                    let data = params.clone();
+                    Some(VtToken::NextGen(NextGenCommand::RegionContent { id, content_type, data }))
+                }
+                "layout" => {
+                    let spec = params.get("spec")?.clone();
+                    Some(VtToken::NextGen(NextGenCommand::RegionLayout { spec }))
+                }
+                _ => Some(VtToken::Unknown),
+            }
+        } else if let Some(widget_cmd) = params.get("widget") {
+            match widget_cmd.as_str() {
+                "button" | "form" | "table" | "chart" | "progress" | "select" | "tree" | "tabs" | "markdown" => {
+                    let id = params.get("id")?.clone();
+                    let widget_type = widget_cmd.clone();
+                    let params = params.clone();
+                    Some(VtToken::NextGen(NextGenCommand::WidgetCreate { widget_type, id, params }))
+                }
+                _ => Some(VtToken::Unknown),
+            }
+        } else if let Some(stream_cmd) = params.get("stream") {
+            match stream_cmd.as_str() {
+                "start" => {
+                    let stream_type = params.get("type")?.clone();
+                    let id = params.get("id")?.clone();
+                    let params = params.clone();
+                    Some(VtToken::NextGen(NextGenCommand::StreamStart { stream_type, id, params }))
+                }
+                "add" => {
+                    let stream_id = params.get("stream")?.clone();
+                    let data = params.clone();
+                    Some(VtToken::NextGen(NextGenCommand::StreamAdd { stream_id, data }))
+                }
+                "update" => {
+                    let stream_id = params.get("stream")?.clone();
+                    let item_id = params.get("item")?.clone();
+                    let updates = params.clone();
+                    Some(VtToken::NextGen(NextGenCommand::StreamUpdate { stream_id, item_id, updates }))
+                }
+                "end" => {
+                    let stream_id = params.get("stream")?.clone();
+                    Some(VtToken::NextGen(NextGenCommand::StreamEnd { stream_id }))
+                }
+                _ => Some(VtToken::Unknown),
+            }
+        } else if let Some(update_cmd) = params.get("update") {
+            match update_cmd.as_str() {
+                "widget" => {
+                    let id = params.get("id")?.clone();
+                    let updates = params.clone();
+                    Some(VtToken::NextGen(NextGenCommand::WidgetUpdate { id, updates }))
+                }
+                _ => Some(VtToken::Unknown),
+            }
+        } else if let Some(callback_cmd) = params.get("callback") {
+            match callback_cmd.as_str() {
+                "register" => {
+                    let id = params.get("id")?.clone();
+                    let event = params.get("event")?.clone();
+                    let command = params.get("command")?.clone();
+                    Some(VtToken::NextGen(NextGenCommand::CallbackRegister { id, event, command }))
+                }
+                "url" => {
+                    let widget_id = params.get("widget")?.clone();
+                    let url = params.get("url")?.clone();
+                    let method = params.get("method").cloned().unwrap_or_else(|| "POST".to_string());
+                    Some(VtToken::NextGen(NextGenCommand::CallbackUrl { widget_id, url, method }))
+                }
+                _ => Some(VtToken::Unknown),
+            }
+        } else if let Some(state_cmd) = params.get("state") {
+            match state_cmd.as_str() {
+                "save" => {
+                    let id = params.get("id")?.clone();
+                    Some(VtToken::NextGen(NextGenCommand::StateSave { id }))
+                }
+                "load" => {
+                    let id = params.get("id")?.clone();
+                    Some(VtToken::NextGen(NextGenCommand::StateLoad { id }))
+                }
+                "export" => {
+                    let file = params.get("file")?.clone();
+                    Some(VtToken::NextGen(NextGenCommand::StateExport { file }))
+                }
+                _ => Some(VtToken::Unknown),
+            }
+        } else if let Some(query_cmd) = params.get("query") {
+            match query_cmd.as_str() {
+                "regions" => Some(VtToken::NextGen(NextGenCommand::QueryRegions)),
+                "widgets" => Some(VtToken::NextGen(NextGenCommand::QueryWidgets)),
+                "state" => Some(VtToken::NextGen(NextGenCommand::QueryState)),
                 _ => Some(VtToken::Unknown),
             }
         } else {
